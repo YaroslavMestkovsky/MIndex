@@ -1,8 +1,5 @@
-import sys
 import os
-
 from PyQt6.QtWidgets import (
-    QApplication,
     QMainWindow,
     QVBoxLayout,
     QWidget,
@@ -12,8 +9,26 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QFileDialog,
 )
-from PyQt6.QtGui import QIcon, QFont
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
+
+
+class WorkerThread(QThread):
+    """Поток для выполнения задачи."""
+
+    log_signal = pyqtSignal(str)
+
+    def __init__(self, util):
+        super().__init__()
+        self.util = util
+
+    def run(self):
+        """Основной метод потока."""
+
+        try:
+            self.util.manage(log_callback=self.log_signal.emit)
+        except Exception as e:
+            self.log_signal.emit(f"FAILURE: {str(e)}")
 
 
 class GUI(QMainWindow):
@@ -68,11 +83,14 @@ class GUI(QMainWindow):
     def start_processing(self):
         """Начинает обработку: очищает лог и запускает логику."""
 
-        if not self.directory_input.text():
-            self.log_text.append("Ошибка: Директория не выбрана!")
-            return
+        self.log_text.clear()
 
-        self.util.manage()
+        if not os.path.isdir(self.directory_input.text()):
+            self.log_text.append("Ошибка: Директория не выбрана!")
+        else:
+            self.worker_thread = WorkerThread(self.util)
+            self.worker_thread.log_signal.connect(self.update_log)
+            self.worker_thread.start()
 
     def update_log(self, msg):
         """Обновляет лог."""
