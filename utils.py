@@ -9,13 +9,14 @@ from gui import GUI
 class IndexUtil:
     def __init__(self):
         self.gui = None
+        self.path = None
         self.standard_df = None
         self.columns_order = None
 
-        self.PARTS = "ДОЛИ.xlsx"
-        self.PRICES = "ЦЕНЫ.xlsx"
-        self.RIVALS = "КОНКУРЕНТЫ.xlsx"
-        self.STANDARD = "ЭТАЛОН.xlsx"
+        self.PARTS = "ДОЛИ"
+        self.PRICES = "ЦЕНЫ"
+        self.RIVALS = "КОНКУРЕНТЫ"
+        self.STANDARD = "ЭТАЛОН"
 
         self.article_tag = "*article"
         self.format_tag = "*format"
@@ -72,77 +73,76 @@ class IndexUtil:
         sys.exit(app.exec())
 
     def manage(self, log_callback):
-        path = self.gui.directory_input.text()
+        self.path = self.gui.file_input.text()
         self.columns_order = self.gui.cols_order_input.text().split(",")
-        dir_list = os.listdir(path)
-        all_docs_ok = True
 
-        log_callback("Проверяем наличие файлов...")
-        for document in self.DOCS_MAP.keys():
-            if not document in dir_list:
-                all_docs_ok = False
-                log_callback(f"Обязательно наличие файла {document} в директории!")
-            else:
-                self.DOCS_MAP[document] = os.path.join(path, document)
+        log_callback("Читаем файл...")
+        missing_sheets = self.read_file()
 
-        if all_docs_ok:
-            log_callback("Читаем файлы...")
-            self.read_docs()
+        if missing_sheets:
+            log_callback(f"FAILURE. не хватает листов:{missing_sheets}")
+            return
 
-            self.rename_columns()
+        self.rename_columns()
 
-            log_callback("Добавляем конкурентов в эталон...")
-            self.merge_rivals_to_standard()
+        log_callback("Добавляем конкурентов в эталон...")
+        self.merge_rivals_to_standard()
 
-            self.add_utility_col()
+        self.add_utility_col()
 
-            log_callback("Переворачиваем таблицу...")
-            self.brain_flip()
+        log_callback("Переворачиваем таблицу...")
+        self.brain_flip()
 
-            log_callback("Добавляем цены...")
-            self.merge_prices_to_standard()
+        log_callback("Добавляем цены...")
+        self.merge_prices_to_standard()
 
-            log_callback("Добавляем доли...")
-            self.merge_parts_to_standard()
+        log_callback("Добавляем доли...")
+        self.merge_parts_to_standard()
 
-            log_callback("Убираем пустые ЦК/ЦМ...")
-            self.drop_null()
+        log_callback("Убираем пустые ЦК/ЦМ...")
+        self.drop_null()
 
-            log_callback("Убираем не-цифровые ЦК/ЦМ...")
-            #self.drop_not_int()
+        #log_callback("Убираем не-цифровые ЦК/ЦМ...")
+        #self.drop_not_int()
 
-            log_callback("Производим расчеты...")
-            self.calculate()
+        log_callback("Производим расчеты...")
+        self.calculate()
 
-            self.clear_cols_names()
-            self.delete_cols()
+        self.clear_cols_names()
+        self.delete_cols()
 
-            try:
-                self.move_cols()
-            except Exception as e:
-                log_callback(f"Сортировка столбцов: FAILURE\nОшибка при сортировке: {e}")
-            else:
-                log_callback("Сортировка столбцов...")
-
-            log_callback("Выгрузка в файл...")
-            self.DOCS_MAP[self.STANDARD].to_excel("result.xlsx", index=False)
-            log_callback(f"Готово. Результат выгружен в папку: {os.path.join(os.path.curdir, 'result.xlsx')}")
+        try:
+            self.move_cols()
+        except Exception as e:
+            log_callback(f"Сортировка столбцов: FAILURE\nОшибка при сортировке: {e}")
         else:
-            log_callback("Файлы: FAILURE\nПроверьте директорию и повторите попытку.")
+            log_callback("Сортировка столбцов...")
 
-    def read_docs(self):
+        log_callback("Выгрузка в файл...")
+        self.DOCS_MAP[self.STANDARD].to_excel("result.xlsx", index=False)
+        log_callback(f"Готово. Результат выгружен в папку: {os.path.join(os.path.curdir, 'result.xlsx')}")
+
+    def read_file(self):
         """Чтение файлов."""
 
+        raw_doc = pd.ExcelFile(self.path)
+        sheet_names = raw_doc.sheet_names
+        missing_sheets = []
+
         for document in self.DOCS_MAP.keys():
-            rules = self.DOCS_RULES_MAP[document]
-            tags = rules["tags"]
-            df = pd.read_excel(self.DOCS_MAP[document], skiprows=rules["skip"])
+            if not document in sheet_names:
+                missing_sheets.append(document)
+            else:
+                rules = self.DOCS_RULES_MAP[document]
+                tags = rules["tags"]
+                df = raw_doc.parse(document, skiprows=rules["skip"])
+                filtered_columns = [col for col in df.columns if self.check_tags(col, tags.values())]
+                df = df[filtered_columns][1:]
 
-            # Фильтруем по тегам
-            filtered_columns = [col for col in df.columns if self.check_tags(col, tags.values())]
-            df = df[filtered_columns][1:]
+                self.DOCS_MAP[document] = df
 
-            self.DOCS_MAP[document] = df
+        if missing_sheets:
+            return missing_sheets
 
     def rename_columns(self):
         """Переименовываем технические колонки."""

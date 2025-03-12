@@ -45,62 +45,62 @@ class GUI(QMainWindow):
         self.setWindowTitle("Расчет индексов")
         self.setGeometry(100, 100, 800, 400)
 
-        # Установка иконки приложения
         icon_path = "icon.png"
         self.setWindowIcon(QIcon(icon_path))
 
-        # Основной контейнер
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.layout = QVBoxLayout(self.central_widget)
 
-        # Поле выбора директории
-        self.directory_label = QLabel("Выберите директорию:")
-        self.layout.addWidget(self.directory_label)
+        self.file_label = QLabel("Выберите файл (.xlsx):")
+        self.layout.addWidget(self.file_label)
 
-        self.directory_input = QLineEdit("Путь до папки с файлами КОНКУРЕНТЫ.xlsx, ДОЛИ.xlsx, ЦЕНЫ.xlsx и ЭТАЛОН.xlsx")
-        self.directory_input.setReadOnly(True)
-        self.directory_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.layout.addWidget(self.directory_input)
+        self.file_input = QLineEdit()
+        self.file_input.setReadOnly(True)
+        self.file_input.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Центрируем текст
+        self.layout.addWidget(self.file_input)
 
-        self.browse_button = QPushButton("Выбрать директорию")
-        self.browse_button.clicked.connect(self.select_directory)
+        self.browse_button = QPushButton("Выбрать файл")
+        self.browse_button.clicked.connect(self.select_file)
         self.layout.addWidget(self.browse_button)
 
-        self.cols_info_input = QLineEdit("Укажите порядок колонок в результирующем файле в указанном формате.")
-        self.cols_info_input.setReadOnly(True)
-        self.cols_info_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.cols_info_input = QLabel("Укажите порядок колонок в результирующем файле в указанном формате:")
         self.layout.addWidget(self.cols_info_input)
 
         self.cols_order_input = QLineEdit("ID,Конкурент,ЦК,Цена_Магнит,ЧВХ,Доля,Магнит/ЦК,Магнит*доля продаж,ЦК*доля продаж,ТГ20,ТГ21,ТГ22,ТГ23,ТП,Формат") # noqa e501
         self.cols_order_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.layout.addWidget(self.cols_order_input)
 
-        # Кнопка "Обработать"
-        self.process_button = QPushButton("Обработать")
-        self.process_button.clicked.connect(self.start_processing)
-        self.layout.addWidget(self.process_button)
+        self.log_info = QLabel("Процесс исполнения:")
+        self.layout.addWidget(self.log_info)
 
-        # Текстовое поле для логов
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.layout.addWidget(self.log_text)
 
-    def select_directory(self):
+        self.process_button = QPushButton("Обработать")
+        self.process_button.clicked.connect(self.start_processing)
+        self.layout.addWidget(self.process_button)
+
+    def select_file(self):
         """Открывает диалог выбора директории и записывает путь в текстовое поле."""
 
-        directory = QFileDialog.getExistingDirectory(self, "Выберите директорию")
-
-        if directory:
-            self.directory_input.setText(directory)
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Выберите файл",
+            "",  # Начальная директория (пустая строка означает текущую директорию)
+            "Excel Files (*.xlsx);;All Files (*)"  # Фильтр для файлов
+        )
+        if file_path:
+            self.file_input.setText(file_path)
 
     def start_processing(self):
         """Начинает обработку: очищает лог и запускает логику."""
 
         self.log_text.clear()
 
-        if not os.path.isdir(self.directory_input.text()):
-            self.log_text.append("Ошибка: Директория не выбрана!")
+        if not self.file_input.text():
+            self.log_text.append("Ошибка: Файл не выбран!")
         else:
             self.worker_thread = WorkerThread(self.util)
             self.worker_thread.log_signal.connect(self.update_log)
