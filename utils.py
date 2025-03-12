@@ -77,6 +77,7 @@ class IndexUtil:
         dir_list = os.listdir(path)
         all_docs_ok = True
 
+        log_callback("Проверяем наличие файлов...")
         for document in self.DOCS_MAP.keys():
             if not document in dir_list:
                 all_docs_ok = False
@@ -85,23 +86,34 @@ class IndexUtil:
                 self.DOCS_MAP[document] = os.path.join(path, document)
 
         if all_docs_ok:
-            log_callback("Проверяем наличие файлов: OK")
+            log_callback("Читаем файлы...")
             self.read_docs()
-            log_callback("Читаем файлы: OK")
+
             self.rename_columns()
+
+            log_callback("Добавляем конкурентов в эталон...")
             self.merge_rivals_to_standard()
-            log_callback("Добавляем конкурентов в эталон: OK")
+
             self.add_utility_col()
+
+            log_callback("Переворачиваем таблицу...")
             self.brain_flip()
-            log_callback("Переворачиваем таблицу: OK")
+
+            log_callback("Добавляем цены...")
             self.merge_prices_to_standard()
-            log_callback("Добавляем цены: OK")
+
+            log_callback("Добавляем доли...")
             self.merge_parts_to_standard()
-            log_callback("Добавляем доли: OK")
+
+            log_callback("Убираем пустые ЦК/ЦМ...")
             self.drop_null()
-            log_callback("Пустые ЦК/ЦМ убраны: OK")
+
+            log_callback("Убираем не-цифровые ЦК/ЦМ...")
+            #self.drop_not_int()
+
+            log_callback("Производим расчеты...")
             self.calculate()
-            log_callback("Производим расчеты: OK")
+
             self.clear_cols_names()
             self.delete_cols()
 
@@ -110,8 +122,9 @@ class IndexUtil:
             except Exception as e:
                 log_callback(f"Сортировка столбцов: FAILURE\nОшибка при сортировке: {e}")
             else:
-                log_callback("Сортировка столбцов: OK")
+                log_callback("Сортировка столбцов...")
 
+            log_callback("Выгрузка в файл...")
             self.DOCS_MAP[self.STANDARD].to_excel("result.xlsx", index=False)
             log_callback(f"Готово. Результат выгружен в папку: {os.path.join(os.path.curdir, 'result.xlsx')}")
         else:
@@ -165,11 +178,21 @@ class IndexUtil:
 
         df = self.DOCS_MAP[self.STANDARD]
         major_tag = self.DOCS_RULES_MAP[self.RIVALS]["tags"]["major_tag"]
+        major_cols = [col for col in df if major_tag in col]
+        id_cols = [col for col in df.columns if major_tag not in col]
+
+        value_vars = [col.split("*")[0] for col in major_cols]
+        renames = {tagged_col: tagged_col.split("*")[0] for tagged_col in major_cols}
+
+        df.rename(
+            columns=renames,
+            inplace = True,
+        )
 
         df_melted = pd.melt(
             df,
-            id_vars=[col for col in df.columns if major_tag not in col],
-            value_vars=[col for col in df.columns if major_tag in col],
+            id_vars=id_cols,
+            value_vars=value_vars,
             var_name="Конкурент",
             value_name="ЦК",
         )
@@ -222,16 +245,38 @@ class IndexUtil:
 
         self.DOCS_MAP[self.STANDARD] = df
 
+    # def drop_not_int(self):
+    #     """Дроп строк, в которых должны быть цифры, но хранятся буквы или иные символы."""
+    #
+    #     def check_int(val):
+    #         return isinstance(val, int)
+    #
+    #     df = self.DOCS_MAP[self.STANDARD]
+    #     price_col = (
+    #         col for col in df.columns
+    #         if self.prices_tag.lstrip("*") in col
+    #            and self.self_cost_tag not in col
+    #     ).__next__()
+    #
+    #     mask = df[['ЦК', price_col]].applymap(check_int).all(axis=1)
+    #     filtered_df = df[mask]
+    #
+    #     self.DOCS_MAP[self.STANDARD] = filtered_df
+
     def calculate(self):
         """Расчет дополнительных колонок."""
 
         df = self.DOCS_MAP[self.STANDARD]
 
         part_col = (col for col in df.columns if self.parts_tag.lstrip("*") in col).__next__()
-        self_cost_col = (col for col in df.columns if self.self_cost_tag.lstrip("*") in col).__next__()
+        price_col = (
+            col for col in df.columns
+            if self.prices_tag.lstrip("*") in col
+               and self.self_cost_tag not in col
+        ).__next__()
 
-        df["Магнит/ЦК"] = df[self_cost_col] / df["ЦК"]
-        df["MonP"] = df[part_col]*df[self_cost_col]
+        df["Магнит/ЦК"] = df[price_col] / df["ЦК"]
+        df["MonP"] = df[part_col]*df[price_col]
         df["PRonP"] = df["ЦК"]*df[part_col]
 
     def clear_cols_names(self):
