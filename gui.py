@@ -1,3 +1,4 @@
+import datetime
 import os
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -10,7 +11,11 @@ from PyQt6.QtWidgets import (
     QFileDialog,
 )
 from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import (
+    Qt,
+    QThread,
+    pyqtSignal,
+)
 
 
 class WorkerThread(QThread):
@@ -38,7 +43,7 @@ class GUI(QMainWindow):
         self.util = util
 
         self.setWindowTitle("Расчет индексов")
-        self.setGeometry(100, 100, 600, 400)
+        self.setGeometry(100, 100, 800, 400)
 
         # Установка иконки приложения
         icon_path = "icon.png"
@@ -61,6 +66,15 @@ class GUI(QMainWindow):
         self.browse_button = QPushButton("Выбрать директорию")
         self.browse_button.clicked.connect(self.select_directory)
         self.layout.addWidget(self.browse_button)
+
+        self.cols_info_input = QLineEdit("Укажите порядок колонок в результирующем файле в указанном формате.")
+        self.cols_info_input.setReadOnly(True)
+        self.cols_info_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.layout.addWidget(self.cols_info_input)
+
+        self.cols_order_input = QLineEdit("ID,Конкурент,ЦК,Цена_Магнит,ЧВХ,Доля,Магнит/ЦК,Магнит*доля продаж,ЦК*доля продаж,ТГ20,ТГ21,ТГ22,ТГ23,ТП,Формат") # noqa e501
+        self.cols_order_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.layout.addWidget(self.cols_order_input)
 
         # Кнопка "Обработать"
         self.process_button = QPushButton("Обработать")
@@ -94,4 +108,6 @@ class GUI(QMainWindow):
 
     def update_log(self, msg):
         """Обновляет лог."""
-        self.log_text.append(msg)
+
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.log_text.append(f"{now}: {msg}")

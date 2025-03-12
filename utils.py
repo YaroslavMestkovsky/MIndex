@@ -5,14 +5,12 @@ import pandas as pd
 from PyQt6.QtWidgets import QApplication
 from gui import GUI
 
-# todo 1: Разобраться с удалением нулевых ЦК и цена магнит
-# todo 2: Порядок и наименование столбцов согласно результату (КодТП переименовать в ID) !
-# todo 3: Добавить метрики по времени
 
 class IndexUtil:
     def __init__(self):
         self.gui = None
         self.standard_df = None
+        self.columns_order = None
 
         self.PARTS = "ДОЛИ.xlsx"
         self.PRICES = "ЦЕНЫ.xlsx"
@@ -75,6 +73,7 @@ class IndexUtil:
 
     def manage(self, log_callback):
         path = self.gui.directory_input.text()
+        self.columns_order = self.gui.cols_order_input.text().split(",")
         dir_list = os.listdir(path)
         all_docs_ok = True
 
@@ -99,11 +98,19 @@ class IndexUtil:
             log_callback("Добавляем цены: OK")
             self.merge_parts_to_standard()
             log_callback("Добавляем доли: OK")
-            #self.drop_null()
-            log_callback("Пустые ЦК убраны: OK")
+            self.drop_null()
+            log_callback("Пустые ЦК/ЦМ убраны: OK")
             self.calculate()
             log_callback("Производим расчеты: OK")
             self.clear_cols_names()
+            self.delete_cols()
+
+            try:
+                self.move_cols()
+            except Exception as e:
+                log_callback(f"Сортировка столбцов: FAILURE\nОшибка при сортировке: {e}")
+            else:
+                log_callback("Сортировка столбцов: OK")
 
             self.DOCS_MAP[self.STANDARD].to_excel("result.xlsx", index=False)
             log_callback(f"Готово. Результат выгружен в папку: {os.path.join(os.path.curdir, 'result.xlsx')}")
@@ -203,7 +210,6 @@ class IndexUtil:
     def drop_null(self):
         """Дроп строк, которые не нужны пустыми."""
 
-        #todo пропали нулевые доли???
         df = self.DOCS_MAP[self.STANDARD]
         price_col = (
             col for col in df.columns
@@ -224,26 +230,49 @@ class IndexUtil:
         part_col = (col for col in df.columns if self.parts_tag.lstrip("*") in col).__next__()
         self_cost_col = (col for col in df.columns if self.self_cost_tag.lstrip("*") in col).__next__()
 
-        df["ЦК*доля продаж"] = df["ЦК"]*df[part_col] #todo названия перепроверить
-        df["Магнит*доля продаж"] = df[part_col]*df[self_cost_col] #todo названия перепроверить
         df["Магнит/ЦК"] = df[self_cost_col] / df["ЦК"]
+        df["MonP"] = df[part_col]*df[self_cost_col]
+        df["PRonP"] = df["ЦК"]*df[part_col]
 
     def clear_cols_names(self):
         """Избавление от тегов."""
 
         df = self.DOCS_MAP[self.STANDARD]
 
+        self_cost_col = (col for col in df.columns if self.self_cost_tag.lstrip("*") in col).__next__().split("*")[0]
+        price_col = (
+            col for col in df.columns
+            if self.prices_tag.lstrip("*") in col
+            and self.self_cost_tag not in col
+        ).__next__().split("*")[0]
         columns = [col.split("*")[0] for col in df.columns]
+
         df.columns = columns
         df.rename(
             columns={
-                self.article_tag.lstrip("*"): "КодТП",
+                self.article_tag.lstrip("*"): "ID",
                 self.format_tag.lstrip("*"): "Формат",
+                price_col: "Цена_Магнит",
+                self_cost_col: "ЧВХ",
+                "PRonP": "ЦК*доля продаж",
+                "MonP": "Магнит*доля продаж",
             },
             inplace=True,
         )
 
         self.DOCS_MAP[self.STANDARD] = df
+
+    def delete_cols(self):
+        """Удаляем ненужные колонки."""
+
+        df = self.DOCS_MAP[self.STANDARD]
+        self.DOCS_MAP[self.STANDARD] = df.drop(columns=[self.utility_col])
+
+    def move_cols(self):
+        """Перемещение столбцов в правильном порядке."""
+
+        df = self.DOCS_MAP[self.STANDARD]
+        self.DOCS_MAP[self.STANDARD] = df[self.columns_order]
 
     @staticmethod
     def check_tags(col, tags):
